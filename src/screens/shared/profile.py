@@ -1,14 +1,14 @@
 """PROFILE  |  side: shared  |  route: /profile  |  navbar tab 4
 
 UI TODO
-  [ ] Avatar circle with initials
-  [ ] Name, institute email, roll number, hostel/building (read-only to start)
-  [ ] Role badge (Student / Staff)
+  [=] Avatar circle with initials
+  [=] Name, institute email, roll number, hostel/building (read-only to start)
+  [=] Role badge (Student / Staff)
   [ ] (later) Edit profile (name, hostel) and Change password
   [ ] (later) Notification preferences switch
-  [ ] App version text
-  [ ] Button "Log out" with a confirm dialog
-  [ ] No charts on this screen
+  [=] App version text
+  [=] Button "Log out" with a confirm dialog
+  [=] No charts on this screen
 
 Behaviour TODO
   [ ] Logout: auth_service.logout(refresh_token) -> session.clear() (also remove stored token) -> reset(page, "/login")
