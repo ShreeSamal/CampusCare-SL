@@ -4,8 +4,8 @@ from pydantic import BaseModel, Field, model_validator
 
 class CreateIssueRequest(BaseModel):
     category: str = Field(min_length=1, max_length=80)
-    description: str = Field(min_length=5, max_length=5000)
-    building_id: str = Field(min_length=1, max_length=100)
+    description: str = Field(min_length=0, max_length=5000)
+    building_id: str | None = Field(default=None, max_length=100)
     room: str | None = Field(default=None, max_length=100)
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
