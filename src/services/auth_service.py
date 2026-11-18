@@ -114,3 +114,14 @@ async def resend_otp(email: str) -> dict:
             "email": email,
         },
     )
+
+
+async def refresh(refresh_token: str) -> dict:
+    """POST /auth/refresh -> {access, refresh, user}. Raises api_client.ApiError (401 = token rejected)
+    or NetworkError. Supabase rotates the refresh token, so always store the returned one."""
+    from core import api_client
+
+    data = await api_client.request(
+        "POST", "/auth/refresh", json={"refresh_token": refresh_token}, auth=False, _retry=False
+    )
+    return _normalize_session(data)

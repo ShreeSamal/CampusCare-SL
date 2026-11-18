@@ -8,8 +8,7 @@ Usage (from services/*):
 - Returns the parsed JSON body ({} for empty responses).
 - Server unreachable -> NetworkError.   HTTP error -> ApiError(message, status_code, body).
 
-TODO
-  [ ] On 401: call auth_service.refresh(), update the session, retry ONCE (backend has no refresh endpoint yet)
+- On 401 with a stored refresh token: POST /auth/refresh, update the session, retry ONCE.
 """
 from __future__ import annotations
 
@@ -50,7 +49,7 @@ def _error_message(body, status: int) -> str:
         if isinstance(detail, list) and detail:          # FastAPI validation errors
             first = detail[0]
             if isinstance(first, dict) and first.get("msg"):
-                return str(first["msg"])
+                return str(first["msg"]).removeprefix("Value error, ")
     if status == 401:
         return "Your session has expired. Please log in again."
     return f"Request failed (HTTP {status})."
@@ -65,6 +64,7 @@ async def request(
     data: dict | None = None,
     files: list | None = None,
     auth: bool = True,
+    _retry: bool = True,
 ):
     """Perform one HTTP call against the backend and return the parsed JSON body."""
     headers = {}
@@ -87,6 +87,25 @@ async def request(
         raise NetworkError(f"Could not reach the server at {config.API_BASE_URL}: {exc}") from exc
 
     body = _parse_body(response)
+    if response.status_code == 401 and auth and token and _retry and await _refresh_session():
+        return await request(method, path, params=params, json=json, data=data, files=files, auth=auth, _retry=False)
     if response.status_code >= 400:
         raise ApiError(_error_message(body, response.status_code), response.status_code, body)
     return body
+
+
+async def _refresh_session() -> bool:
+    """Swap the stored refresh token for a new access token. True if the request can be retried."""
+    refresh = session.refresh_token()
+    if not refresh or session.is_dev_session():
+        return False
+    from services import auth_service
+
+    try:
+        fresh = await auth_service.refresh(refresh)
+    except (ApiError, NetworkError):
+        return False
+    if not fresh.get("access"):
+        return False
+    session.update_tokens(fresh["access"], fresh.get("refresh"))
+    return True

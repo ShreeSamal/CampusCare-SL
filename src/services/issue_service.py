@@ -4,14 +4,15 @@ Implemented
   [x] list_buildings()              GET  /issues/buildings
   [x] create_issue(payload)         POST /issues               (multipart; photos are sent in the same request)
   [x] list_my_issues(status=None)   GET  /issues/mine
+  [x] my_summary()                  GET  /issues/mine/summary  (Home: counts, recent, awaiting confirmation)
+  [x] get_issue(issue_id)           GET  /issues/{id}          (issue + worker, timeline, comments, feedback, actions)
+  [x] add_comment(issue_id, text)   POST /issues/{id}/comments
+  [x] confirm(issue_id, rating, feedback)   POST /issues/{id}/confirm   (resolved -> closed + rating)
+  [x] reopen(issue_id, reason)      POST /issues/{id}/reopen   (resolved -> in progress / open)
+  [x] match_building(lat, lng, acc) GET  /issues/buildings/match (nearest building to a GPS fix, or None)
 
-TODO (needs backend endpoints first)
+Later (no backend yet)
   [ ] list_categories()             GET  /categories/
-  [ ] match_building(lat, lng)      GET  /buildings/match/?lat=&lng=
-  [ ] get_issue(issue_id)           GET  /issues/{id}          (includes timeline + allowed transitions)
-  [ ] add_comment(issue_id, text)   POST /issues/{id}/comments
-  [ ] submit_feedback(issue_id, rating, text)   POST /issues/{id}/feedback
-  [ ] reopen(issue_id, reason)      POST /issues/{id}/reopen
 """
 import mimetypes
 
@@ -80,3 +81,37 @@ async def create_issue(payload: dict) -> dict:
 
     data = await api_client.request("POST", "/issues", data=form, files=files or None)
     return data.get("issue", data) if isinstance(data, dict) else {}
+
+
+async def my_summary() -> dict:
+    """{counts {status: n}, total, active, overdue, recent [issue], awaiting_confirmation [issue]}"""
+    return await api_client.request("GET", "/issues/mine/summary")
+
+
+async def get_issue(issue_id) -> dict:
+    """{issue (+building_name, worker, due_at_effective, overdue), timeline, comments, feedback,
+    can_confirm, can_reopen, can_comment}. 404 if the issue isn't the student's."""
+    return await api_client.request("GET", f"/issues/{int(issue_id)}")
+
+
+async def add_comment(issue_id, text: str) -> dict:
+    return await api_client.request("POST", f"/issues/{int(issue_id)}/comments", json={"text": text})
+
+
+async def confirm(issue_id, rating: int, feedback: str | None = None) -> dict:
+    return await api_client.request(
+        "POST", f"/issues/{int(issue_id)}/confirm", json={"rating": int(rating), "feedback": feedback or None}
+    )
+
+
+async def reopen(issue_id, reason: str) -> dict:
+    return await api_client.request("POST", f"/issues/{int(issue_id)}/reopen", json={"reason": reason})
+
+
+async def match_building(latitude: float, longitude: float, accuracy: float | None = None) -> dict | None:
+    """Nearest campus building to a GPS fix: {id, name, zone, distance_m, confidence} or None
+    (off campus / too far from every building / building coordinates not configured)."""
+    data = await api_client.request(
+        "GET", "/issues/buildings/match", params={"lat": latitude, "lng": longitude, "accuracy": accuracy}
+    )
+    return data.get("match") if isinstance(data, dict) else None

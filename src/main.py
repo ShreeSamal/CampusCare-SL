@@ -12,7 +12,7 @@ async def main(page: ft.Page):
     page.padding = 0
 
     router.init(page)
-    await session.restore(page)     # TODO in session.py: read stored refresh token
+    await session.restore(page)     # stored refresh token -> new session (see core/session.py)
 
     router.reset(page, router.home_path() if session.is_logged_in() else "/login")
 

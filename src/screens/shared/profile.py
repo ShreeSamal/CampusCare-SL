@@ -10,8 +10,9 @@ UI TODO
   [=] Button "Log out" with a confirm dialog
   [=] No charts on this screen
 
-Behaviour TODO
-  [ ] Logout: auth_service.logout(refresh_token) -> session.clear() (also remove stored token) -> reset(page, "/login")
+Behaviour
+  [x] Logout: session.clear() (also removes the stored refresh token) -> reset(page, "/login")
+  [ ] (later) server-side logout: auth_service.logout(refresh_token) to revoke the token
 """
 
 """PROFILE | shared screen | route: /profile | navbar tab 4
@@ -271,8 +272,7 @@ def view(page: ft.Page, fresh: bool = False, **params) -> ft.Control:
             # Do not keep the local session active if server logout is unavailable.
             pass
         finally:
-            # session.clear() currently clears in-memory tokens only; the current
-            # session implementation does not persist tokens to local storage.
+            # session.clear() forgets the in-memory tokens and the stored refresh token.
             session.clear()
             reset(page, "/login")
 

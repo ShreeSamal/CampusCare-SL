@@ -46,7 +46,6 @@ Only this screen file needs to be modified.
 """
 
 import asyncio
-import base64
 import importlib
 import inspect
 import io
@@ -201,12 +200,15 @@ def _building_options():
             for name in ("get_buildings", "list_buildings"):
                 function = getattr(module, name, None)
 
-                if not callable(function):
+                # Async services (issue_service.list_buildings) are loaded later by load_buildings();
+                # calling them here would only create a never-awaited coroutine.
+                if not callable(function) or inspect.iscoroutinefunction(function):
                     continue
 
                 result = function()
 
                 if inspect.isawaitable(result):
+                    result.close()
                     continue
 
                 if isinstance(result, (list, tuple)):
@@ -429,10 +431,10 @@ def view(page: ft.Page, **params) -> ft.Control:
                 content=ft.Column(
                     [
                         ft.Image(
-                            src_base64=base64.b64encode(photo["bytes"]).decode("ascii"),
+                            src=photo["bytes"],
                             width=96,
                             height=82,
-                            fit=ft.ImageFit.COVER,
+                            fit=ft.BoxFit.COVER,
                             border_radius=8,
                         ),
                         ft.Text(
@@ -773,57 +775,36 @@ def view(page: ft.Page, **params) -> ft.Control:
     except Exception:
         logger.debug("Geolocator service could not be registered", exc_info=True)
 
-    async def _auto_match_building(latitude, longitude):
-        """Try existing optional building-match services; never block manual selection."""
-        for module_name in (
-            "services.issue_service",
-            "services.issues",
-            "services.issue",
-            "services.building_service",
-            "services.buildings",
-        ):
-            try:
-                module = importlib.import_module(module_name)
-                matcher = getattr(module, "match_building", None)
-                if not callable(matcher):
-                    continue
-                try:
-                    signature = inspect.signature(matcher)
-                    positional = [
-                        p for p in signature.parameters.values()
-                        if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
-                    ]
-                except (TypeError, ValueError):
-                    positional = []
+    match_state = {"auto_value": None}   # dropdown value we picked from GPS (so we never override a manual pick)
 
-                if len(positional) >= 2:
-                    match_result = matcher(latitude, longitude)
-                else:
-                    match_result = matcher({"latitude": latitude, "longitude": longitude})
-                match_result = await _resolve(match_result)
+    async def _auto_match_building(latitude, longitude, accuracy=None):
+        """GET /issues/buildings/match -> pre-select the nearest building. Never blocks manual selection."""
+        from services import issue_service
 
-                if isinstance(match_result, dict):
-                    match_name = (
-                        match_result.get("name")
-                        or match_result.get("building")
-                        or match_result.get("building_name")
-                    )
-                elif isinstance(match_result, str):
-                    match_name = match_result
-                else:
-                    match_name = None
+        try:
+            match = await issue_service.match_building(latitude, longitude, accuracy)
+        except Exception:
+            logger.debug("Automatic building matching failed", exc_info=True)
+            return False
+        if not match:
+            return False
 
-                if match_name:
-                    match_name = str(match_name)
-                    existing = {getattr(option, "key", None) for option in building_dropdown.options}
-                    if match_name not in existing:
-                        building_dropdown.options.append(ft.dropdown.Option(match_name, text=match_name))
-                    building_dropdown.value = match_name
-                    building_note.value = f"Building detected automatically: {match_name}. You can change it."
-                    return True
-            except Exception:
-                logger.debug("Automatic building matching failed via %s", module_name, exc_info=True)
-        return False
+        name, building_id = str(match["name"]), str(match["id"])
+        if building_dropdown.value and building_dropdown.value != match_state["auto_value"]:
+            building_note.value = (
+                f"GPS suggests {name} (about {match['distance_m']} m away). Keeping your selection."
+            )
+            return True
+
+        existing = {getattr(option, "key", None) for option in building_dropdown.options}
+        if name not in existing:
+            building_dropdown.options.append(ft.dropdown.Option(name, text=name))
+        building_ids[name] = building_id
+        building_dropdown.value = name
+        match_state["auto_value"] = name
+        hint = " Please double-check." if match.get("confidence") != "high" else ""
+        building_note.value = f"Detected: {name} (about {match['distance_m']} m away). You can change it.{hint}"
+        return True
 
     async def get_location(e=None):
         clear_error()
@@ -890,7 +871,9 @@ def view(page: ft.Page, **params) -> ft.Control:
                     "Try again outdoors for a more precise location."
                 )
 
-            matched = await _auto_match_building(float(latitude), float(longitude))
+            matched = await _auto_match_building(
+                float(latitude), float(longitude), float(accuracy) if accuracy is not None else None
+            )
             if not matched:
                 building_note.value = "Location fetched. Choose your building manually if needed."
 
