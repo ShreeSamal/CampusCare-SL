@@ -31,7 +31,6 @@ maintenance requests.
 -   [How It Works](#how-it-works)
 -   [Security and Deployment Notes](#security-and-deployment-notes)
 -   [Contributing](#contributing)
--   [License](#license)
 
 ## Features
 
